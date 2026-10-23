@@ -1,0 +1,37 @@
+from snowflake.snowpark.context import get_active_session
+
+session = get_active_session()
+
+# Session context
+print(session.sql(
+    "SELECT CURRENT_ACCOUNT() acct, CURRENT_USER() usr, CURRENT_ROLE() role, "
+    "CURRENT_WAREHOUSE() wh, CURRENT_VERSION() ver"
+).to_pandas())
+
+# Row counts across SYNTH_SIGNAL_DB
+tables = [
+    "ANALYTICS.DIM_USERS",
+    "ANALYTICS.DIM_SALESFORCE__COMPANIES",
+    "ANALYTICS.FACT_CRM_EVENTS",
+    "SIGNAL_SAVED_FILES.ENTERPRISE_THEMES",
+    "SIGNAL_SAVED_FILES.ENTERPRISE_QUARTERLY",
+    "SIGNAL_SAVED_FILES.ENTERPRISE_PORTCOS",
+    "SIGNAL_SAVED_FILES.EXPERT_THEMES",
+    "SIGNAL_SAVED_FILES.EXPERT_EXAMPLES",
+    "SIGNAL_SAVED_FILES.EXTERNAL_SCAN",
+    "SIGNAL_SAVED_FILES.FDE_OTHER_QUARTERLY",
+]
+for t in tables:
+    n = session.table(f"SYNTH_SIGNAL_DB.{t}").count()
+    print(f"{t:45} {n:>8,}")
+
+# Sample join: latest 5 events with company and user
+print(session.sql("""
+    SELECT e.EVENT_ID, e.EVENT_TYPE, TO_DATE(e.PERFORMED_DATE) AS EVENT_DATE,
+           c.ACCOUNT_NAME, u.USER_NAME
+    FROM SYNTH_SIGNAL_DB.ANALYTICS.FACT_CRM_EVENTS e
+    JOIN SYNTH_SIGNAL_DB.ANALYTICS.DIM_SALESFORCE__COMPANIES c USING (ACCOUNT_ID)
+    JOIN SYNTH_SIGNAL_DB.ANALYTICS.DIM_USERS u ON u.USER_ID = e.PERFORMED_BY_ID
+    ORDER BY e.PERFORMED_DATE DESC, e.EVENT_ID
+    LIMIT 5
+""").to_pandas())
