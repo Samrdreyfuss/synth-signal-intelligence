@@ -40,7 +40,9 @@ s AS (
          ABS(HASH(N, 5)) % 100 AS RM,
          ABS(HASH(N, 6)) % 100 AS RH,
          TO_DATE(PERFORMED_DATE) >= '2026-04-01' AS IS_CURRENT,
-         PHRASE IN ('ai agents', 'forward deployed engineering', 'llm observability',
+         -- Hot themes accelerate after 2026-04-01. The AI agents baseline is deliberately not
+         -- hot: it is the reference rate other themes are compared against.
+         PHRASE IN ('forward deployed engineering', 'llm observability',
                     'retrieval augmented generation', 'voice ai', 'ai red teaming') AS IS_HOT
   FROM b
 )

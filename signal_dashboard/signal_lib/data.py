@@ -8,6 +8,7 @@ bind parameters, never formatted into the SQL text.
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 from typing import Callable, Optional, Sequence
 
 import pandas as pd
@@ -39,7 +40,13 @@ def theme_phrase(theme: str) -> str:
 
 
 def _upper(df: pd.DataFrame) -> pd.DataFrame:
+    """Upper-case column names and turn Snowflake NUMBER(p,s) values (decimal.Decimal) into floats."""
     df.columns = [str(c).upper() for c in df.columns]
+    for col in df.columns:
+        if df[col].dtype == object:
+            sample = df[col].dropna()
+            if len(sample) and isinstance(sample.iloc[0], Decimal):
+                df[col] = pd.to_numeric(df[col], errors="coerce").astype(float)
     return df
 
 

@@ -15,18 +15,22 @@ st.set_page_config(
 )
 
 CACHE_TTL = timedelta(minutes=15)
+# Bump when the shape or types of loaded data change, so cached results from older code are dropped.
+DATA_VERSION = 3
 
 conn = st.connection("snowflake", ttl=os.getenv("SNOWFLAKE_CONNECTION_TTL"))
 
 
 def run(sql, params=None):
-    return conn.query(sql, params=params, ttl=CACHE_TTL)
+    # ttl=0: no query-level cache. Caching lives only in the @st.cache_data loaders,
+    # so "Refresh data" and DATA_VERSION control every cached result.
+    return conn.query(sql, params=params, ttl=0)
 
 
 # ------------------------------------------------------------------ cached loaders
 
 @st.cache_data(ttl=CACHE_TTL)
-def load_saved():
+def load_saved(version=DATA_VERSION):
     return {
         "themes": data.enterprise_themes(run),
         "quarterly": data.enterprise_quarterly(run),
@@ -39,12 +43,12 @@ def load_saved():
 
 
 @st.cache_data(ttl=CACHE_TTL)
-def load_health():
+def load_health(version=DATA_VERSION):
     return data.account_health(run)
 
 
 @st.cache_data(ttl=CACHE_TTL, max_entries=64)
-def load_theme_live(theme):
+def load_theme_live(theme, version=DATA_VERSION):
     return {
         "monthly": metrics.monthly_share(data.monthly_mentions(run, theme)),
         "accounts": data.theme_accounts(run, theme),
@@ -53,9 +57,8 @@ def load_theme_live(theme):
 
 
 def clear_caches():
-    load_saved.clear()
-    load_health.clear()
-    load_theme_live.clear()
+    # Clears every @st.cache_data loader, including those in evidence_view and companies_view.
+    st.cache_data.clear()
 
 
 # ------------------------------------------------------------------ header (static first)

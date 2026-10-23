@@ -42,7 +42,7 @@ def _clear_all():
 
 def render(run, focus_theme, lifted, saved):
     @st.cache_data(ttl=CACHE_TTL)
-    def load_overview():
+    def load_overview(version=2):  # bump to drop results cached by older code
         return ev.attribution_shares(ev.attribution(run)), ev.corroboration(run)
 
     @st.cache_data(ttl=CACHE_TTL, max_entries=64)

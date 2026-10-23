@@ -94,3 +94,11 @@ def test_filter_accounts_actionable():
 def test_theme_phrase():
     assert theme_phrase("AI agents (baseline)") == "ai agents"
     assert theme_phrase("Voice AI") == "voice ai"
+
+
+def test_snowflake_decimals_become_floats():
+    from decimal import Decimal
+    from signal_lib.data import _upper
+    df = _upper(pd.DataFrame({"ratio": [Decimal("2.5714"), None], "name": ["a", "b"]}))
+    assert df["RATIO"].dtype == float and df["NAME"].dtype == object
+    assert (1.0 - df["RATIO"]).iloc[0] == pytest.approx(-1.5714)

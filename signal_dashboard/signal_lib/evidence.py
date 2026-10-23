@@ -180,5 +180,7 @@ def intro_share_check(attr: pd.DataFrame, themes: pd.DataFrame) -> pd.DataFrame:
         lambda x: x > 0)
     out = piv[["CRM_INTRO_SHARE"]].reset_index().merge(
         themes[["THEME", "SHARE_FROM_PORTCO_INTROS"]], on="THEME", how="left")
+    for col in ["CRM_INTRO_SHARE", "SHARE_FROM_PORTCO_INTROS"]:
+        out[col] = pd.to_numeric(out[col], errors="coerce").astype(float)
     out["GAP_PTS"] = (out["CRM_INTRO_SHARE"] - out["SHARE_FROM_PORTCO_INTROS"]) * 100
     return out

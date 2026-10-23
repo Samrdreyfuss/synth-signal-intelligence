@@ -77,6 +77,14 @@ def test_source_matrix_empty():
     assert out.empty and "SOURCE_FAMILIES" in out.columns
 
 
+def test_intro_share_check_accepts_decimals():
+    from decimal import Decimal
+    attr = pd.DataFrame({"THEME": ["A", "A"], "SOURCE": ["CRM note", "Portco intro"],
+                         "EVIDENCE_ITEMS": [75, 25]})
+    themes = pd.DataFrame({"THEME": ["A"], "SHARE_FROM_PORTCO_INTROS": [Decimal("0.30")]})
+    assert ev.intro_share_check(attr, themes).loc[0, "GAP_PTS"] == pytest.approx(-5.0)
+
+
 def test_intro_share_check():
     attr = pd.DataFrame({"THEME": ["A", "A"], "SOURCE": ["CRM note", "Portco intro"],
                          "EVIDENCE_ITEMS": [75, 25]})

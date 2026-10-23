@@ -17,6 +17,8 @@ def theme_lift(themes: pd.DataFrame) -> pd.DataFrame:
     if BASELINE_THEME not in set(themes["THEME"]):
         raise ValueError(f"'{BASELINE_THEME}' row is required in enterprise_themes")
     out = themes.copy()
+    for col in ["MONTHLY_RATE_RATIO", "BASELINE_RATIO", "SHARE_FROM_PORTCO_INTROS"]:
+        out[col] = pd.to_numeric(out[col], errors="coerce").astype(float)
     out["IS_BASELINE"] = out["THEME"] == BASELINE_THEME
     out["LIFT"] = out["MONTHLY_RATE_RATIO"] / out["BASELINE_RATIO"]
     out["SCAN"] = out["SHARE_FROM_PORTCO_INTROS"].isna().map(
