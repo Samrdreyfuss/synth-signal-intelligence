@@ -32,6 +32,7 @@ def run(sql, params=None):
 @st.cache_data(ttl=CACHE_TTL)
 def load_saved(version=DATA_VERSION):
     return {
+        "loaded_at": pd.Timestamp.now(tz="America/Los_Angeles"),
         "themes": data.enterprise_themes(run),
         "quarterly": data.enterprise_quarterly(run),
         "portcos": data.enterprise_portcos(run),
@@ -88,6 +89,7 @@ with st.sidebar:
     only_actionable = st.toggle("Only unowned or 90+ days untouched", value=True)
     st.divider()
     st.button(":material/refresh: Refresh data", on_click=clear_caches, width="stretch")
+    st.caption(f"Data loaded {saved['loaded_at']:%b %d, %H:%M:%S} PT · app data version {DATA_VERSION}")
     st.caption(f"Signals measured against **{metrics.BASELINE_THEME}**. "
                "Lift = theme rate ratio ÷ baseline rate ratio from the same scan.")
 
