@@ -8,7 +8,7 @@ import streamlit as st
 
 # A running app process keeps already-imported modules, so after files change it can mix new
 # streamlit_app.py with an old signal_lib. Reload everything when the library version differs.
-CODE_VERSION = 5
+CODE_VERSION = 6
 if "signal_lib" in sys.modules and getattr(sys.modules["signal_lib"], "CODE_VERSION", None) != CODE_VERSION:
     for _name in ["signal_lib.theme", "signal_lib.data", "signal_lib.metrics", "signal_lib.evidence",
                   "signal_lib.companies", "signal_lib.emerging", "signal_lib.topics", "signal_lib.charts",
@@ -160,6 +160,14 @@ topics_tab, research_tab = st.tabs([TOPICS_TAB, RESEARCH_TAB], key="main_tab", o
 # ================================================================== TAB 1: TOPICS
 
 def render_topics():
+    # Map first. It follows the table filters below, read from their state (defaults on first load).
+    mapped = tp.visible(topics, ss.get("tp_kinds", tp.KINDS), ss.get("tp_status"), ss.get("tp_hidden", False))
+    with st.container(border=True):
+        st.markdown("**Topic map** · momentum vs reach, each panel on its own scale · "
+                    "bubble = mentions · dashed line = 1× · click a topic to research it")
+        st.altair_chart(charts.topic_map(mapped, ss.topic), on_select=_on_map_pick,
+                        key="topic_map", width="content")
+
     k = metrics.headline_kpis(lifted, health)
     sm = tp.summary(topics)
     growth = ((k["current_mentions"] / CURRENT_WINDOW_MONTHS) / (k["prior_mentions"] / 12) - 1
@@ -200,14 +208,13 @@ def render_topics():
     shown = tp.visible(topics, kinds, statuses, show_hidden)
     ss._shown_ids = list(shown["TOPIC_ID"])
 
-    left, right = st.columns([3, 2])
-    with left:
+    with st.container():
         with st.container(border=True):
             st.markdown(f"**All topics** · {len(shown)} shown · select a row to research it")
             st.dataframe(
                 shown[["TOPIC", "KIND", "STATUS", "TREND", "MOMENTUM", "COMPANIES", "MENTIONS",
                        "SOURCES", "CONFIDENCE", "PARENT"]],
-                hide_index=True, width="stretch", height=520, key="topics_table",
+                hide_index=True, width="stretch", height=460, key="topics_table",
                 on_select=_on_table_pick, selection_mode="single-row",
                 column_config={
                     "TOPIC": st.column_config.TextColumn("Topic", width="medium"),
@@ -221,11 +228,6 @@ def render_topics():
                     "CONFIDENCE": "Confidence", "PARENT": "Parent theme",
                 },
             )
-    with right:
-        with st.container(border=True):
-            st.markdown("**Topic map** · ● tracked theme · ◆ discovered · click to research")
-            st.altair_chart(charts.topic_map(shown, ss.topic), on_select=_on_map_pick,
-                            key="topic_map", width="stretch")
 
     with st.expander(":material/trending_up: All themes over time"):
         shares = metrics.quarterly_share(saved["quarterly"])

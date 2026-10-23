@@ -314,34 +314,58 @@ def cluster_timeline(weekly: pd.DataFrame) -> alt.Chart:
 TOPIC_PICK = "topic_pick"
 
 
-def topic_map(topics: pd.DataFrame, selected: Optional[str] = None) -> alt.Chart:
-    """Every topic on momentum vs reach. Shape = tracked theme or discovered; click to pick."""
-    colors = {**t.SIGNAL_COLORS, **t.EMERGING_COLORS}
-    df = topics.drop(columns=["TREND", "FIRST_SEEN", "DEFINITION"], errors="ignore").assign(
-        SELECTED=topics["TOPIC_ID"] == selected,
-        M=topics["MOMENTUM"].clip(lower=0.05))
-    pick = alt.selection_point(name=TOPIC_PICK, fields=["TOPIC_ID"], on="click")
-    base = alt.Chart(df)
+def _topic_panel(df: pd.DataFrame, pick, title: str, y_title: str, log_y: bool, label_top: int,
+                 topics_statuses) -> alt.LayerChart:
+    colors = {k: v for k, v in {**t.SIGNAL_COLORS, **t.EMERGING_COLORS}.items()
+              if k in set(topics_statuses)}
+    df = df.assign(
+        LABEL=df["TOPIC"].where(df["SELECTED"] | (df["MOMENTUM"].rank(ascending=False, method="first") <= label_top), ""),
+        M=df["MOMENTUM"].clip(lower=0.1))
+    pad = 0.15 * max(1.0, float(df["COMPANIES"].max() - df["COMPANIES"].min())) if len(df) else 1
     enc = dict(
-        x=alt.X("COMPANIES:Q", title="Reach (companies)", scale=alt.Scale(type="symlog")),
-        y=alt.Y("M:Q", title="Momentum (theme lift · topic velocity)", scale=alt.Scale(type="log")),
+        x=alt.X("COMPANIES:Q", title="Reach (companies)",
+                scale=alt.Scale(zero=False, nice=True,
+                                domain=[max(0, float(df["COMPANIES"].min()) - pad), float(df["COMPANIES"].max()) + pad]
+                                if len(df) else alt.Undefined)),
+        y=alt.Y("M:Q", title=y_title,
+                scale=alt.Scale(type="log", nice=False, domain=[0.8, float(df["M"].max()) * 1.6]) if log_y else alt.Scale(zero=False, nice=True, padding=20)),
     )
-    dots = base.mark_point(filled=True, opacity=0.9, size=260, stroke=t.BACKGROUND, strokeWidth=1).encode(
+    base = alt.Chart(df)
+    dots = base.mark_circle(opacity=0.9, stroke=t.BACKGROUND, strokeWidth=1).encode(
         **enc,
-        shape=alt.Shape("KIND:N", title=None,
-                        scale=alt.Scale(domain=["Tracked theme", "Discovered"], range=["circle", "diamond"])),
+        size=alt.Size("MENTIONS:Q", scale=alt.Scale(range=[80, 700]), legend=None),
         color=alt.Color("STATUS:N", title=None,
                         scale=alt.Scale(domain=list(colors), range=list(colors.values()))),
-        tooltip=[alt.Tooltip("TOPIC:N", title="Topic"), "KIND:N", "STATUS:N",
+        tooltip=[alt.Tooltip("TOPIC:N", title="Topic"), "STATUS:N",
                  alt.Tooltip("MOMENTUM:Q", format=".2f", title="Momentum"),
                  alt.Tooltip("COMPANIES:Q", title="Companies"), alt.Tooltip("MENTIONS:Q", title="Mentions")],
     ).add_params(pick)
-    rule = alt.Chart(pd.DataFrame({"Y": [1.0]})).mark_rule(color=t.MUTED, strokeDash=[4, 4]).encode(y="Y:Q")
-    labels = base.mark_text(align="left", dx=10, dy=-6, fontSize=10, color=t.TEXT).encode(
-        **enc, text="TOPIC:N")
+    rule = alt.Chart(pd.DataFrame({"M": [1.0]})).mark_rule(color=t.MUTED, strokeDash=[4, 4]).encode(y="M:Q")
+    labels = base.mark_text(align="left", dx=11, dy=alt.expr("datum.COMPANIES % 2 ? 9 : -9"), fontSize=10, color=t.TEXT).encode(**enc, text="LABEL:N")
     halo = base.transform_filter("datum.SELECTED").mark_circle(
-        fill=None, stroke=t.TEXT, strokeWidth=2, size=900).encode(**enc)
-    return t.style((rule + dots + halo + labels).properties(height=420))
+        fill=None, stroke=t.TEXT, strokeWidth=2, size=1100).encode(**enc)
+    return (rule + dots + halo + labels).properties(title=title, height=360, width=560)
+
+
+def topic_map(topics: pd.DataFrame, selected: Optional[str] = None) -> alt.Chart:
+    """Two panels, each on its own scale: tracked themes (lift vs reach) and discovered topics
+    (velocity vs reach). Their momentum ranges differ by an order of magnitude, so one shared
+    axis squashes the themes. Bubble = mentions; click either panel to pick (``TOPIC_PICK``)."""
+    df = topics.drop(columns=["TREND", "FIRST_SEEN", "DEFINITION"], errors="ignore").assign(
+        SELECTED=topics["TOPIC_ID"] == selected)
+    pick = alt.selection_point(name=TOPIC_PICK, fields=["TOPIC_ID"], on="click")
+    panels = []
+    themes = df[df["KIND"] == "Tracked theme"]
+    found = df[df["KIND"] == "Discovered"]
+    if len(themes):
+        panels.append(_topic_panel(themes, pick, "Tracked themes", "Lift vs baseline", False, 6, df["STATUS"]))
+    if len(found):
+        panels.append(_topic_panel(found, pick, "Discovered topics", "Velocity (last 8 wks ÷ prior 8, log)",
+                                   True, 8, df["STATUS"]))
+    if not panels:
+        return t.style(alt.Chart(pd.DataFrame({"x": []})).mark_point())
+    chart = alt.hconcat(*panels).resolve_scale(x="independent", y="independent", size="independent")
+    return t.style(chart)
 
 
 def topic_weekly(weekly: pd.DataFrame) -> alt.Chart:
