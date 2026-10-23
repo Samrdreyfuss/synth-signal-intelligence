@@ -1,8 +1,22 @@
+import importlib
 import os
+import sys
 from datetime import timedelta
 
 import pandas as pd
 import streamlit as st
+
+# A running app process keeps already-imported modules, so after files change it can mix new
+# streamlit_app.py with an old signal_lib. Reload everything when the library version differs.
+CODE_VERSION = 5
+if "signal_lib" in sys.modules and getattr(sys.modules["signal_lib"], "CODE_VERSION", None) != CODE_VERSION:
+    for _name in ["signal_lib.theme", "signal_lib.data", "signal_lib.metrics", "signal_lib.evidence",
+                  "signal_lib.companies", "signal_lib.emerging", "signal_lib.topics", "signal_lib.charts",
+                  "signal_lib", "evidence_view", "companies_view", "emerging_view"]:
+        if _name in sys.modules:
+            importlib.reload(sys.modules[_name])
+        else:
+            importlib.import_module(_name)
 
 import companies_view
 import emerging_view
