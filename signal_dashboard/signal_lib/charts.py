@@ -264,3 +264,48 @@ def company_theme_bars(themes: pd.DataFrame) -> alt.Chart:
         text=alt.Text("CRM_MENTIONS:Q", format="d"),
     )
     return t.style((bars + mentions).properties(height=max(300, 20 * len(themes))))
+
+
+# ------------------------------------------------------------------ emerging topics
+
+CLUSTER_PICK = "cluster_pick"
+
+
+def _emerging_scale() -> alt.Scale:
+    return alt.Scale(domain=list(t.EMERGING_COLORS), range=list(t.EMERGING_COLORS.values()))
+
+
+def emergence_map(sig: pd.DataFrame, selected: Optional[str] = None) -> alt.Chart:
+    """Uniqueness (distance from nearest theme) vs velocity, bubble = companies. Click to pick."""
+    df = sig.assign(SELECTED=sig["CLUSTER_ID"] == selected,
+                    LABEL=sig["TOPIC_NAME"].fillna(sig["CLUSTER_ID"]))
+    pick = alt.selection_point(name=CLUSTER_PICK, fields=["CLUSTER_ID"], on="click")
+    base = alt.Chart(df)
+    dots = base.mark_circle(opacity=0.85, stroke=t.BACKGROUND, strokeWidth=1).encode(
+        x=alt.X("UNIQUENESS:Q", title="Uniqueness (1 − similarity to nearest theme)",
+                scale=alt.Scale(zero=False, padding=30)),
+        y=alt.Y("VELOCITY:Q", title="Velocity (recent 8 weeks ÷ prior 8 weeks)",
+                scale=alt.Scale(type="log")),
+        size=alt.Size("ACCOUNTS:Q", scale=alt.Scale(range=[120, 2200]), legend=None),
+        color=alt.Color("STATUS:N", scale=_emerging_scale(), title=None),
+        tooltip=[alt.Tooltip("LABEL:N", title="Topic"), "STATUS:N",
+                 alt.Tooltip("RECORDS:Q", title="Records"), alt.Tooltip("ACCOUNTS:Q", title="Companies"),
+                 alt.Tooltip("VELOCITY:Q", format=".2f"), alt.Tooltip("UNIQUENESS:Q", format=".2f"),
+                 alt.Tooltip("NEAREST_THEME:N", title="Nearest theme"), "SOURCE_LIST:N"],
+    ).add_params(pick)
+    labels = base.mark_text(align="left", dx=12, dy=-6, fontSize=11, color=t.TEXT).encode(
+        x="UNIQUENESS:Q", y="VELOCITY:Q", text="LABEL:N")
+    halo = base.transform_filter("datum.SELECTED").mark_circle(
+        fill=None, stroke=t.TEXT, strokeWidth=2, size=2600).encode(x="UNIQUENESS:Q", y="VELOCITY:Q")
+    return t.style((dots + halo + labels).properties(height=380))
+
+
+def cluster_timeline(weekly: pd.DataFrame) -> alt.Chart:
+    """Weekly additions to one cluster, stacked by source."""
+    chart = alt.Chart(weekly).mark_bar().encode(
+        x=alt.X("WEEK:T", title=None),
+        y=alt.Y("RECORDS:Q", title="Records added", stack="zero"),
+        color=alt.Color("SOURCE:N", scale=_source_scale(), title=None),
+        tooltip=[alt.Tooltip("WEEK:T", format="%b %d, %Y"), "SOURCE:N", "RECORDS:Q"],
+    )
+    return t.style(chart.properties(height=220))

@@ -14,26 +14,35 @@ sql/
   05_crm_on_profile.sql        # rewrites CRM note text so ~75% of mentions follow profiles
   06_derived_signals.sql       # DERIVED schema: theme/quarterly/FDE signals from CRM
   07_company_theme_fit.sql     # Cortex AI_EMBED fit + COMPANY_THEME_RELEVANCE view
+  08_seed_emerging_topics.sql  # ~640 AI-written seed notes = answer key for topic detection
+  09_emerging_embeddings.sql   # EMERGING schema: record feed + one embedding per distinct text
+  10_emerging_clustering.sql   # CONFIG + CLUSTER_RECORDS() online clustering (Snowpark/numpy)
+  11_emerging_signals.sql      # CLUSTER_MEMBERS, CLUSTER_SIGNALS (velocity, spread, status)
+  12_emerging_naming_and_review.sql  # NAME_CLUSTERS(), PROMOTE_CLUSTER(), REVIEW_CLUSTER()
+  13_emerging_schedule.sql     # stream + hourly task REFRESH_EMERGING (created suspended)
 signal_dashboard/              # Streamlit in Snowflake app (Workspace, container runtime)
-  streamlit_app.py             # UI only: header, KPIs, seven tabs
+  streamlit_app.py             # UI only: header, KPIs, eight tabs
+  emerging_view.py             # Emerging topics tab (map, ranked list, topic card, review)
   evidence_view.py             # Evidence explorer tab (drill-down UI)
   companies_view.py            # Company fit tab (profile fit vs mentions drill-down)
   signal_lib/                  # reusable library, no Streamlit dependency
     data.py                    # parameterised queries; take run(sql, params) -> DataFrame
     evidence.py                # evidence/attribution queries + pure helpers
     companies.py               # company profile / theme relevance queries + helpers
+    emerging.py                # emerging-topic queries, promote/review actions, helpers
     metrics.py                 # lift vs baseline, quarterly share, momentum, KPIs, filters
     charts.py                  # Altair chart builders
     theme.py                   # palette and chart styling
   snowflake.yml  pyproject.toml  .streamlit/config.toml
-tests/                         # pure-pandas tests for metrics, evidence and companies
+tests/                         # pure-pandas tests for metrics, evidence, companies, emerging
 ```
 
 ## Setup
 
-1. Run the `sql/` scripts in order (01 → 07) with a role that can create a database.
+1. Run the `sql/` scripts in order (01 → 13) with a role that can create a database.
    07 calls Cortex `AI_EMBED` once (~130k input tokens). 05 keeps the original CRM
-   table as `ANALYTICS.FACT_CRM_EVENTS_V1`.
+   table as `ANALYTICS.FACT_CRM_EVENTS_V1`; it rebuilds CRM from that backup, so re-run
+   08 after 05. 08 calls `AI_COMPLETE` once (~74k input tokens + output) and stores the text.
 2. Open `signal_dashboard/streamlit_app.py` in the Workspace and click **Run**
    (warehouse `DEFAULT_WH`, compute pool `SYSTEM_COMPUTE_POOL_CPU`, set in `snowflake.yml`).
 
@@ -42,6 +51,7 @@ tests/                         # pure-pandas tests for metrics, evidence and com
 | Tab | Shows |
 |---|---|
 | Theme radar | Lift vs the AI-agents baseline against enterprise reach; ranked lift bars; full theme table |
+| Emerging topics | Clusters discovered from embeddings: uniqueness vs velocity map, ranked list with weekly trend, topic card (definition, weekly additions by source, companies, closest records), Promote / Merge / Dismiss |
 | Evidence explorer | Attribution by source per theme, corroboration, and drill-down Theme › Source › Company › evidence |
 | Company fit | Cortex profile fit vs CRM mentions per company; Confirmed / Latent fit / Off-profile; company card with evidence; latent-fit outreach CSV |
 | Trends | Quarterly share of enterprise activity (quarters under 200 activities dropped), YoY momentum, live monthly share, FDE panel |
@@ -50,6 +60,43 @@ tests/                         # pure-pandas tests for metrics, evidence and com
 | Live excerpts | Most recent CRM notes for the focus theme |
 
 Lift = a theme's monthly rate ratio divided by the baseline ratio from the same scan.
+
+## Emerging topics
+
+1. **Embed every record.** `EMERGING.SOURCE_RECORDS` unions CRM notes, portco intros, expert
+   calls and the external scan. `EMBED_NEW_TEXTS()` embeds each distinct cleaned text once.
+2. **Cluster as records arrive.** `CLUSTER_RECORDS()` replays records week by week:
+   - records with a tracked theme phrase belong to that theme;
+   - identical text repeated 20+ times is treated as boilerplate and skipped;
+   - other records join the nearest discovered cluster (cosine >= `JOIN_SIMILARITY`) or wait
+     in a pool;
+   - each week, pool records with >= `MIN_RECORDS` neighbours at >= `FORM_SIMILARITY` form
+     a new cluster.
+
+   Thresholds live in `EMERGING.CONFIG`. They were tuned on the seeded answer key:
+   join 0.70, form 0.62, minimum 6 records.
+3. **Score.** `CLUSTER_SIGNALS` adds the following, then labels each cluster New topic,
+   Emerging sub-topic, Watch or Noise:
+   - velocity (last 8 weeks against the 8 before);
+   - spread (companies, reps, sources, industries);
+   - share from the top company (over 50% means noise);
+   - uniqueness (1 − similarity to the nearest theme);
+   - an emergence score.
+4. **Name.** `NAME_CLUSTERS()` makes two structured `AI_COMPLETE` calls per new or grown
+   cluster: one for name and definition, one for whether a tracked theme covers the topic.
+5. **Automate.** The task `REFRESH_EMERGING` runs hourly when the CRM stream has new rows.
+   Resume it with `ALTER TASK SYNTH_SIGNAL_DB.EMERGING.REFRESH_EMERGING RESUME`.
+6. **Review.**
+   - `PROMOTE_CLUSTER` adds a theme definition, phrase and embedding.
+   - `REVIEW_CLUSTER` marks a cluster Merged, Dismissed or Reopened.
+
+Answer key (`EMERGING.SEED_TOPICS` plus a later pickup test): all 6 groups come out as expected.
+- *New topic:* MCP, agentic checkout, inference sovereignty, and freight negotiation (added later).
+- *Emerging sub-topic:* voice agents for claims, under Voice AI.
+- *Noise:* the single-account decoy.
+
+The original data alone produces no clusters. Seed rows have `EVENT_ID` prefix `EVS`, and the
+pickup test rows have prefix `EVT_PICKUP_`.
 
 ## Data lineage
 

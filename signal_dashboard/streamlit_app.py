@@ -5,6 +5,7 @@ import pandas as pd
 import streamlit as st
 
 import companies_view
+import emerging_view
 import evidence_view
 from signal_lib import charts, data, metrics
 
@@ -122,8 +123,10 @@ with st.container(horizontal=True):
 
 # ------------------------------------------------------------------ tabs
 
-radar_tab, evidence_tab, company_tab, trends_tab, network_tab, action_tab, excerpt_tab = st.tabs([
+(radar_tab, emerging_tab, evidence_tab, company_tab, trends_tab, network_tab, action_tab,
+ excerpt_tab) = st.tabs([
     ":material/radar: Theme radar",
+    ":material/bubble_chart: Emerging topics",
     ":material/fact_check: Evidence explorer",
     ":material/apartment: Company fit",
     ":material/trending_up: Trends",
@@ -131,6 +134,9 @@ radar_tab, evidence_tab, company_tab, trends_tab, network_tab, action_tab, excer
     ":material/task_alt: Action list",
     ":material/format_quote: Live excerpts",
 ])
+
+with emerging_tab:
+    emerging_view.render(run)
 
 with evidence_tab:
     evidence_view.render(run, theme, lifted, saved)

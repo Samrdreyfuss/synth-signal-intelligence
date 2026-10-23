@@ -5,6 +5,6 @@ The package has no Streamlit dependency. Data functions take a ``run`` callable
 from Streamlit (``st.connection(...).query``), a notebook, or tests.
 """
 
-from . import charts, companies, data, evidence, metrics, theme
+from . import charts, companies, data, emerging, evidence, metrics, theme
 
-__all__ = ["charts", "companies", "data", "evidence", "metrics", "theme"]
+__all__ = ["charts", "companies", "data", "emerging", "evidence", "metrics", "theme"]

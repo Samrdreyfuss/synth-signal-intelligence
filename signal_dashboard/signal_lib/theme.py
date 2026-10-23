@@ -52,6 +52,16 @@ RELATIONSHIP_COLORS = {
     "Unrelated": GRID,
 }
 
+EMERGING_COLORS = {
+    "New topic": PRIMARY,
+    "Emerging sub-topic": ACCENT,
+    "Watch": "#60A5FA",
+    "Noise": MUTED,
+    "Promoted": "#34D399",
+    "Merged": "#22D3EE",
+    "Dismissed": GRID,
+}
+
 
 def style(chart):
     """Apply the dashboard look to an Altair chart (transparent so it sits on the theme)."""
