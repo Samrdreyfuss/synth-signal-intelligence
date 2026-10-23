@@ -31,6 +31,20 @@ STATUS_COLORS = {
     "Not in Salesforce": PRIMARY,
 }
 
+SOURCE_COLORS = {
+    "CRM note": "#60A5FA",
+    "Portco intro": PRIMARY,
+    "Portco network": ACCENT,
+    "Expert call": "#F472B6",
+    "External scan": WARN,
+}
+
+CONFIDENCE_COLORS = {
+    "Strongly corroborated": PRIMARY,
+    "Corroborated": "#60A5FA",
+    "Single-source": WARN,
+}
+
 
 def style(chart):
     """Apply the dashboard look to an Altair chart (transparent so it sits on the theme)."""

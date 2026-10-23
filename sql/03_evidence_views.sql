@@ -1,0 +1,156 @@
+-- ============================================================================
+-- 03_evidence_views.sql
+-- Unified evidence layer for attribution and drill-down. Run after 01 and 02.
+-- Creates schema SYNTH_SIGNAL_DB.EVIDENCE with three views. Safe to re-run.
+-- ============================================================================
+CREATE SCHEMA IF NOT EXISTS SYNTH_SIGNAL_DB.EVIDENCE;
+
+-- One row per piece of evidence, same shape for every source.
+CREATE OR REPLACE VIEW SYNTH_SIGNAL_DB.EVIDENCE.EVIDENCE_ITEMS
+  COMMENT = 'Unified evidence: CRM notes, portco intros, portco network, expert calls, external scan'
+AS
+WITH themes AS (
+  SELECT THEME, LOWER(TRIM(REPLACE(THEME, ' (baseline)', ''))) AS PHRASE
+  FROM SYNTH_SIGNAL_DB.SIGNAL_SAVED_FILES.ENTERPRISE_THEMES
+),
+accounts AS (
+  SELECT ACCOUNT_ID, ACCOUNT_NAME, LOWER(ACCOUNT_NAME) AS NAME_KEY
+  FROM SYNTH_SIGNAL_DB.ANALYTICS.DIM_SALESFORCE__COMPANIES
+),
+crm AS (
+  SELECT
+    'CRM:' || e.EVENT_ID AS EVIDENCE_ID,
+    t.THEME,
+    IFF(CONTAINS(LOWER(e.DESCRIPTION), 'via portfolio company'), 'Portco intro', 'CRM note') AS SOURCE,
+    'ANALYTICS.FACT_CRM_EVENTS' AS SOURCE_TABLE,
+    e.EVENT_ID AS SOURCE_KEY,
+    c.ACCOUNT_NAME AS ENTITY_NAME,
+    'Enterprise' AS ENTITY_TYPE,
+    e.ACCOUNT_ID,
+    TO_DATE(e.PERFORMED_DATE) AS EVIDENCE_DATE,
+    UPPER(REPLACE(e.EVENT_TYPE, '_', ' ')) || ' · ' ||
+      TRIM(REGEXP_REPLACE(REGEXP_REPLACE(e.DESCRIPTION, '<[^>]+>', ''), '^\\s*Description:\\s*', '')) AS SNIPPET,
+    NULL::VARCHAR AS LINK,
+    u.USER_NAME AS RECORDED_BY,
+    1 AS WEIGHT
+  FROM SYNTH_SIGNAL_DB.ANALYTICS.FACT_CRM_EVENTS e
+  JOIN themes t ON CONTAINS(LOWER(e.DESCRIPTION), t.PHRASE)
+  JOIN SYNTH_SIGNAL_DB.ANALYTICS.DIM_SALESFORCE__COMPANIES c ON c.ACCOUNT_ID = e.ACCOUNT_ID
+  LEFT JOIN SYNTH_SIGNAL_DB.ANALYTICS.DIM_USERS u ON u.USER_ID = e.PERFORMED_BY_ID
+  WHERE TO_DATE(e.PERFORMED_DATE) >= '2024-07-01'
+),
+portco_split AS (
+  SELECT p.THEME, p.PORTCO, p.ACTIVITIES, TRIM(f.value::STRING) AS ENTERPRISE
+  FROM SYNTH_SIGNAL_DB.SIGNAL_SAVED_FILES.ENTERPRISE_PORTCOS p,
+       LATERAL SPLIT_TO_TABLE(p.ENTERPRISES, ',') f
+),
+portco_network AS (
+  SELECT
+    'PNW:' || SHA1(p.THEME || '|' || p.PORTCO || '|' || p.ENTERPRISE) AS EVIDENCE_ID,
+    p.THEME,
+    'Portco network' AS SOURCE,
+    'SIGNAL_SAVED_FILES.ENTERPRISE_PORTCOS' AS SOURCE_TABLE,
+    p.THEME || ' | ' || p.PORTCO AS SOURCE_KEY,
+    p.ENTERPRISE AS ENTITY_NAME,
+    'Enterprise' AS ENTITY_TYPE,
+    a.ACCOUNT_ID,
+    NULL::DATE AS EVIDENCE_DATE,
+    'Named alongside portfolio company ' || p.PORTCO || ' in ' || p.ACTIVITIES ||
+      ' matching enterprise activities' AS SNIPPET,
+    NULL::VARCHAR AS LINK,
+    p.PORTCO AS RECORDED_BY,
+    p.ACTIVITIES AS WEIGHT
+  FROM portco_split p
+  LEFT JOIN accounts a ON a.NAME_KEY = LOWER(p.ENTERPRISE)
+),
+expert AS (
+  SELECT
+    'EXP:' || SHA1(x.THEME || '|' || x.TITLE || '|' || x.DATE) AS EVIDENCE_ID,
+    x.THEME,
+    'Expert call' AS SOURCE,
+    'SIGNAL_SAVED_FILES.EXPERT_EXAMPLES' AS SOURCE_TABLE,
+    x.TITLE AS SOURCE_KEY,
+    'Expert network' AS ENTITY_NAME,
+    'Expert' AS ENTITY_TYPE,
+    NULL::VARCHAR AS ACCOUNT_ID,
+    x.DATE AS EVIDENCE_DATE,
+    x.TITLE AS SNIPPET,
+    x.URL AS LINK,
+    NULL::VARCHAR AS RECORDED_BY,
+    1 AS WEIGHT
+  FROM SYNTH_SIGNAL_DB.SIGNAL_SAVED_FILES.EXPERT_EXAMPLES x
+),
+scan AS (
+  SELECT
+    'EXT:' || s.DOMAIN || ':' || SHA1(s.THEME) AS EVIDENCE_ID,
+    s.THEME,
+    'External scan' AS SOURCE,
+    'SIGNAL_SAVED_FILES.EXTERNAL_SCAN' AS SOURCE_TABLE,
+    s.DOMAIN AS SOURCE_KEY,
+    s.COMPANY AS ENTITY_NAME,
+    'External company' AS ENTITY_TYPE,
+    NULL::VARCHAR AS ACCOUNT_ID,
+    s.SALESFORCE_LAST_ACTIVITY AS EVIDENCE_DATE,
+    s.DESCRIPTION || ' (' || s.STAGE || COALESCE(', ' || s.HEADCOUNT || ' people', '') || ') · ' ||
+      s.SALESFORCE_STATUS || COALESCE(': ' || s.SALESFORCE_OWNER_OR_MATCH, '') AS SNIPPET,
+    'https://' || s.DOMAIN AS LINK,
+    NULL::VARCHAR AS RECORDED_BY,
+    1 AS WEIGHT
+  FROM SYNTH_SIGNAL_DB.SIGNAL_SAVED_FILES.EXTERNAL_SCAN s
+)
+SELECT * FROM crm
+UNION ALL SELECT * FROM portco_network
+UNION ALL SELECT * FROM expert
+UNION ALL SELECT * FROM scan;
+
+-- Per theme and source: how much evidence, from how many companies, over what period.
+CREATE OR REPLACE VIEW SYNTH_SIGNAL_DB.EVIDENCE.THEME_ATTRIBUTION
+  COMMENT = 'Evidence volume and share by theme and source'
+AS
+SELECT
+  THEME,
+  SOURCE,
+  COUNT(*) AS EVIDENCE_ITEMS,
+  SUM(WEIGHT) AS WEIGHTED_VOLUME,
+  COUNT(DISTINCT ENTITY_NAME) AS ENTITIES,
+  RATIO_TO_REPORT(COUNT(*)) OVER (PARTITION BY THEME) AS SHARE_OF_THEME,
+  MIN(EVIDENCE_DATE) AS FIRST_SEEN,
+  MAX(EVIDENCE_DATE) AS LAST_SEEN
+FROM SYNTH_SIGNAL_DB.EVIDENCE.EVIDENCE_ITEMS
+GROUP BY THEME, SOURCE;
+
+-- Per theme: how many independent source families agree, and companies seen in 2+ sources.
+-- Families: CRM (notes + portco intros), Portco network, Expert call, External scan.
+CREATE OR REPLACE VIEW SYNTH_SIGNAL_DB.EVIDENCE.THEME_CORROBORATION
+  COMMENT = 'Independent source agreement per theme'
+AS
+WITH fam AS (
+  SELECT THEME, ENTITY_NAME, ENTITY_TYPE,
+         IFF(SOURCE IN ('CRM note', 'Portco intro'), 'CRM', SOURCE) AS FAMILY
+  FROM SYNTH_SIGNAL_DB.EVIDENCE.EVIDENCE_ITEMS
+),
+ent AS (
+  SELECT THEME, ENTITY_NAME, COUNT(DISTINCT FAMILY) AS FAMILIES
+  FROM fam WHERE ENTITY_TYPE = 'Enterprise'
+  GROUP BY 1, 2
+),
+multi AS (
+  SELECT THEME, COUNT_IF(FAMILIES >= 2) AS MULTI_SOURCE_ENTITIES
+  FROM ent GROUP BY 1
+),
+agg AS (
+  SELECT THEME,
+         COUNT(DISTINCT FAMILY) AS SOURCE_FAMILIES,
+         ARRAY_AGG(DISTINCT FAMILY) WITHIN GROUP (ORDER BY FAMILY) AS FAMILIES
+  FROM fam GROUP BY 1
+)
+SELECT
+  a.THEME,
+  a.SOURCE_FAMILIES,
+  a.FAMILIES,
+  COALESCE(m.MULTI_SOURCE_ENTITIES, 0) AS MULTI_SOURCE_ENTITIES,
+  CASE WHEN a.SOURCE_FAMILIES >= 3 THEN 'Strongly corroborated'
+       WHEN a.SOURCE_FAMILIES = 2 THEN 'Corroborated'
+       ELSE 'Single-source' END AS CONFIDENCE
+FROM agg a
+LEFT JOIN multi m ON m.THEME = a.THEME;

@@ -145,3 +145,70 @@ def scan_status_bars(counts: pd.DataFrame) -> alt.Chart:
         tooltip=["THEME", "SALESFORCE_STATUS", "COMPANIES"],
     )
     return t.style(chart.properties(height=260))
+
+
+# ------------------------------------------------------------------ evidence / attribution
+
+THEME_PICK = "theme_pick"
+
+
+def _source_scale() -> alt.Scale:
+    return alt.Scale(domain=list(t.SOURCE_COLORS), range=list(t.SOURCE_COLORS.values()))
+
+
+def attribution_bars(attr: pd.DataFrame, corr: pd.DataFrame, selected: Optional[str] = None) -> alt.Chart:
+    """100% stacked bars of each theme's evidence by source. Click a bar to pick its theme.
+
+    The point selection is named ``THEME_PICK``; read it from
+    ``st.altair_chart(..., on_select="rerun")``. ``selected`` dims the other themes.
+    """
+    labels = corr.assign(
+        LABEL=corr["THEME"] + "  ·  " + corr["SOURCE_FAMILIES"].astype(int).astype(str) + " sources"
+    )
+    order = labels.sort_values(["SOURCE_FAMILIES", "MULTI_SOURCE_ENTITIES"], ascending=False)["LABEL"].tolist()
+    df = attr.assign(SOURCE=attr["SOURCE"].astype(str)).merge(
+        labels[["THEME", "LABEL", "CONFIDENCE"]], on="THEME", how="left")
+    df["FOCUS"] = (df["THEME"] == selected) if selected else True
+    pick = alt.selection_point(name=THEME_PICK, fields=["THEME"], on="click")
+    bars = alt.Chart(df).mark_bar(cornerRadius=2).encode(
+        x=alt.X("EVIDENCE_ITEMS:Q", stack="normalize", title="Share of theme evidence",
+                axis=alt.Axis(format="%")),
+        y=alt.Y("LABEL:N", sort=order, title=None),
+        color=alt.Color("SOURCE:N", scale=_source_scale(), title=None),
+        opacity=alt.condition("datum.FOCUS", alt.value(1.0), alt.value(0.3)),
+        tooltip=[alt.Tooltip("THEME:N"), alt.Tooltip("SOURCE:N"),
+                 alt.Tooltip("EVIDENCE_ITEMS:Q", title="Items"),
+                 alt.Tooltip("SHARE_OF_THEME:Q", format=".0%", title="Share"),
+                 alt.Tooltip("ENTITIES:Q", title="Companies"),
+                 alt.Tooltip("CONFIDENCE:N")],
+    ).add_params(pick)
+    return t.style(bars.properties(height=max(320, 22 * df["THEME"].nunique())))
+
+
+def evidence_timeline(tl: pd.DataFrame) -> alt.Chart:
+    """Monthly stacked bars of dated evidence by source for one theme."""
+    chart = alt.Chart(tl).mark_bar().encode(
+        x=alt.X("MONTH:T", title=None),
+        y=alt.Y("ITEMS:Q", title="Evidence items", stack="zero"),
+        color=alt.Color("SOURCE:N", scale=_source_scale(), title=None),
+        tooltip=[alt.Tooltip("MONTH:T", format="%b %Y"), "SOURCE:N", "ITEMS:Q"],
+    )
+    return t.style(chart.properties(height=220))
+
+
+def source_dot_matrix(matrix: pd.DataFrame, sources, top: int = 15) -> alt.Chart:
+    """Company x source dot grid (dot size = items) for the top companies in a theme."""
+    head = matrix.head(top)
+    long = head.melt(id_vars=["ENTITY_NAME", "SOURCE_FAMILIES", "TOTAL"], value_vars=list(sources),
+                     var_name="SOURCE", value_name="ITEMS")
+    long = long[long["ITEMS"] > 0]
+    chart = alt.Chart(long).mark_circle(opacity=0.9).encode(
+        x=alt.X("SOURCE:N", sort=list(sources), title=None,
+                axis=alt.Axis(labelAngle=0, orient="top")),
+        y=alt.Y("ENTITY_NAME:N", sort=head["ENTITY_NAME"].tolist(), title=None),
+        size=alt.Size("ITEMS:Q", scale=alt.Scale(range=[60, 900]), legend=None),
+        color=alt.Color("SOURCE:N", scale=_source_scale(), legend=None),
+        tooltip=["ENTITY_NAME:N", "SOURCE:N", "ITEMS:Q",
+                 alt.Tooltip("SOURCE_FAMILIES:Q", title="Independent sources")],
+    )
+    return t.style(chart.properties(height=max(220, 24 * len(head))))

@@ -4,6 +4,7 @@ from datetime import timedelta
 import pandas as pd
 import streamlit as st
 
+import evidence_view
 from signal_lib import charts, data, metrics
 
 st.set_page_config(
@@ -113,13 +114,17 @@ with st.container(horizontal=True):
 
 # ------------------------------------------------------------------ tabs
 
-radar_tab, trends_tab, network_tab, action_tab, excerpt_tab = st.tabs([
+radar_tab, evidence_tab, trends_tab, network_tab, action_tab, excerpt_tab = st.tabs([
     ":material/radar: Theme radar",
+    ":material/fact_check: Evidence explorer",
     ":material/trending_up: Trends",
     ":material/hub: Network",
     ":material/task_alt: Action list",
     ":material/format_quote: Live excerpts",
 ])
+
+with evidence_tab:
+    evidence_view.render(run, theme, lifted, saved)
 
 with radar_tab:
     left, right = st.columns([3, 2])
