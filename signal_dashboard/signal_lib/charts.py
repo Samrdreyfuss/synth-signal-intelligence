@@ -212,3 +212,55 @@ def source_dot_matrix(matrix: pd.DataFrame, sources, top: int = 15) -> alt.Chart
                  alt.Tooltip("SOURCE_FAMILIES:Q", title="Independent sources")],
     )
     return t.style(chart.properties(height=max(220, 24 * len(head))))
+
+
+# ------------------------------------------------------------------ company fit
+
+COMPANY_PICK = "company_pick"
+
+
+def _rel_scale() -> alt.Scale:
+    return alt.Scale(domain=list(t.RELATIONSHIP_COLORS), range=list(t.RELATIONSHIP_COLORS.values()))
+
+
+def fit_quadrant(companies: pd.DataFrame, selected: Optional[str] = None) -> alt.Chart:
+    """Profile fit (Cortex similarity, x) vs CRM mentions (y), one dot per company.
+
+    Click a dot to pick a company (selection ``COMPANY_PICK``, field ACCOUNT_NAME).
+    """
+    df = companies.assign(SELECTED=companies["ACCOUNT_NAME"] == selected)
+    pick = alt.selection_point(name=COMPANY_PICK, fields=["ACCOUNT_NAME"], on="click")
+    base = alt.Chart(df)
+    dots = base.mark_circle(opacity=0.8, stroke=t.BACKGROUND, strokeWidth=0.5).encode(
+        x=alt.X("SIMILARITY:Q", title="Profile fit (Cortex similarity to theme)",
+                scale=alt.Scale(zero=False)),
+        y=alt.Y("CRM_MENTIONS:Q", title="CRM mentions since Jul 2024"),
+        size=alt.condition("datum.SELECTED", alt.value(320), alt.value(60)),
+        color=alt.Color("RELATIONSHIP:N", scale=_rel_scale(), title=None),
+        tooltip=[alt.Tooltip("ACCOUNT_NAME:N", title="Company"), "INDUSTRY:N", "RELATIONSHIP:N",
+                 alt.Tooltip("SIMILARITY:Q", format=".2f", title="Fit"),
+                 alt.Tooltip("FIT_RANK:Q", title="Fit rank (of 21)"),
+                 alt.Tooltip("CRM_MENTIONS:Q", title="Mentions"),
+                 alt.Tooltip("STATED_PRIORITY:N", title="Stated priority")],
+    ).add_params(pick)
+    halo = base.transform_filter("datum.SELECTED").mark_circle(
+        fill=None, stroke=t.TEXT, strokeWidth=2, size=700
+    ).encode(x="SIMILARITY:Q", y="CRM_MENTIONS:Q")
+    return t.style((dots + halo).properties(height=420))
+
+
+def company_theme_bars(themes: pd.DataFrame) -> alt.Chart:
+    """For one company: fit per theme (bars) with CRM mentions (ticks on second axis)."""
+    order = themes.sort_values("SIMILARITY", ascending=False)["THEME"].tolist()
+    base = alt.Chart(themes).encode(y=alt.Y("THEME:N", sort=order, title=None))
+    bars = base.mark_bar(cornerRadius=2).encode(
+        x=alt.X("SIMILARITY:Q", title="Profile fit", scale=alt.Scale(zero=False)),
+        color=alt.Color("RELATIONSHIP:N", scale=_rel_scale(), title=None),
+        tooltip=["THEME:N", "RELATIONSHIP:N", alt.Tooltip("SIMILARITY:Q", format=".2f"),
+                 "FIT_RANK:Q", "CRM_MENTIONS:Q", "STATED_PRIORITY:N"],
+    )
+    mentions = base.mark_text(align="left", dx=4, color=t.TEXT, fontSize=11).encode(
+        x="SIMILARITY:Q",
+        text=alt.Text("CRM_MENTIONS:Q", format="d"),
+    )
+    return t.style((bars + mentions).properties(height=max(300, 20 * len(themes))))

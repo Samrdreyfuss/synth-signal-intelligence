@@ -45,6 +45,13 @@ CONFIDENCE_COLORS = {
     "Single-source": WARN,
 }
 
+RELATIONSHIP_COLORS = {
+    "Confirmed": PRIMARY,
+    "Latent fit": ACCENT,
+    "Talking, off-profile": WARN,
+    "Unrelated": GRID,
+}
+
 
 def style(chart):
     """Apply the dashboard look to an Altair chart (transparent so it sits on the theme)."""

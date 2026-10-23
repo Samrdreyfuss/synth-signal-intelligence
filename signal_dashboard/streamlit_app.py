@@ -4,6 +4,7 @@ from datetime import timedelta
 import pandas as pd
 import streamlit as st
 
+import companies_view
 import evidence_view
 from signal_lib import charts, data, metrics
 
@@ -96,7 +97,9 @@ k = metrics.headline_kpis(lifted, health)
 sel = lifted.set_index("THEME").loc[theme]
 monthly = live["monthly"]
 spark = monthly["SHARE"].fillna(0).tail(12).round(4).tolist()
-growth = (k["current_mentions"] / 6.55) / (k["prior_mentions"] / 12) - 1 if k["prior_mentions"] else 0
+CURRENT_WINDOW_MONTHS = 200 / (365.25 / 12)  # Apr 1 - Oct 17 2026, same as DERIVED.ENTERPRISE_THEMES
+growth = ((k["current_mentions"] / CURRENT_WINDOW_MONTHS) / (k["prior_mentions"] / 12) - 1
+          if k["prior_mentions"] else 0)
 
 with st.container(horizontal=True):
     st.metric("Themes outpacing baseline", f"{k['themes_outpacing']} / {k['themes_total']}",
@@ -114,9 +117,10 @@ with st.container(horizontal=True):
 
 # ------------------------------------------------------------------ tabs
 
-radar_tab, evidence_tab, trends_tab, network_tab, action_tab, excerpt_tab = st.tabs([
+radar_tab, evidence_tab, company_tab, trends_tab, network_tab, action_tab, excerpt_tab = st.tabs([
     ":material/radar: Theme radar",
     ":material/fact_check: Evidence explorer",
+    ":material/apartment: Company fit",
     ":material/trending_up: Trends",
     ":material/hub: Network",
     ":material/task_alt: Action list",
@@ -125,6 +129,9 @@ radar_tab, evidence_tab, trends_tab, network_tab, action_tab, excerpt_tab = st.t
 
 with evidence_tab:
     evidence_view.render(run, theme, lifted, saved)
+
+with company_tab:
+    companies_view.render(run, theme, theme_names)
 
 with radar_tab:
     left, right = st.columns([3, 2])

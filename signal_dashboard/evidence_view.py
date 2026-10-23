@@ -115,10 +115,10 @@ def render(run, focus_theme, lifted, saved):
         if len(intro) and pd.notna(intro.loc[0, "CRM_INTRO_SHARE"]):
             saved_share = intro.loc[0, "SHARE_FROM_PORTCO_INTROS"]
             st.metric("CRM notes via portco intros", f"{intro.loc[0, 'CRM_INTRO_SHARE']:.0%}",
-                      f"saved file says {saved_share:.0%}" if pd.notna(saved_share) else "not in saved file",
+                      f"{saved_share:.0%} in the current window" if pd.notna(saved_share) else None,
                       delta_color="off", border=True,
-                      help="Computed from CRM note text vs the saved share_from_portco_intros. "
-                           "A large gap means the two sources disagree and is worth checking.")
+                      help="All-time share of this theme's CRM notes that came through a portfolio-"
+                           "company intro, with the Apr–Oct 2026 share from DERIVED.ENTERPRISE_THEMES.")
 
     matrix, tl = load_theme(theme)
 

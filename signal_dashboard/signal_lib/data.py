@@ -17,6 +17,8 @@ Runner = Callable[[str, Optional[Sequence]], pd.DataFrame]
 DB = "SYNTH_SIGNAL_DB"
 ANALYTICS = f"{DB}.ANALYTICS"
 SAVED = f"{DB}.SIGNAL_SAVED_FILES"
+# Theme, quarterly and FDE signals computed from FACT_CRM_EVENTS (sql/06_derived_signals.sql).
+DERIVED = f"{DB}.DERIVED"
 
 # Data in the synthetic copy runs to this date; 90-day staleness is measured from it.
 AS_OF = date(2026, 10, 17)
@@ -44,11 +46,11 @@ def _upper(df: pd.DataFrame) -> pd.DataFrame:
 # ------------------------------------------------------------------ saved files
 
 def enterprise_themes(run: Runner) -> pd.DataFrame:
-    return _upper(run(f"SELECT * FROM {SAVED}.ENTERPRISE_THEMES", None))
+    return _upper(run(f"SELECT * FROM {DERIVED}.ENTERPRISE_THEMES", None))
 
 
 def enterprise_quarterly(run: Runner) -> pd.DataFrame:
-    return _upper(run(f"SELECT * FROM {SAVED}.ENTERPRISE_QUARTERLY ORDER BY THEME, QUARTER", None))
+    return _upper(run(f"SELECT * FROM {DERIVED}.ENTERPRISE_QUARTERLY ORDER BY THEME, QUARTER", None))
 
 
 def enterprise_portcos(run: Runner) -> pd.DataFrame:
@@ -68,7 +70,7 @@ def external_scan(run: Runner) -> pd.DataFrame:
 
 
 def fde_quarterly(run: Runner) -> pd.DataFrame:
-    return _upper(run(f"SELECT * FROM {SAVED}.FDE_OTHER_QUARTERLY ORDER BY QUARTER", None))
+    return _upper(run(f"SELECT * FROM {DERIVED}.FDE_OTHER_QUARTERLY ORDER BY QUARTER", None))
 
 
 # ------------------------------------------------------------------ live CRM queries

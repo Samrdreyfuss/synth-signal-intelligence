@@ -10,10 +10,12 @@ entities:
       - pyproject.toml
       - streamlit_app.py
       - evidence_view.py
+      - companies_view.py
       - .streamlit/config.toml
       - signal_lib/__init__.py
       - signal_lib/data.py
       - signal_lib/evidence.py
+      - signal_lib/companies.py
       - signal_lib/metrics.py
       - signal_lib/charts.py
       - signal_lib/theme.py
