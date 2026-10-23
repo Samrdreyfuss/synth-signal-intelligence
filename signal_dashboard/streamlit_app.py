@@ -8,11 +8,11 @@ import streamlit as st
 
 # A running app process keeps already-imported modules, so after files change it can mix new
 # streamlit_app.py with an old signal_lib. Reload everything when the library version differs.
-CODE_VERSION = 6
+CODE_VERSION = 7
 if "signal_lib" in sys.modules and getattr(sys.modules["signal_lib"], "CODE_VERSION", None) != CODE_VERSION:
     for _name in ["signal_lib.theme", "signal_lib.data", "signal_lib.metrics", "signal_lib.evidence",
-                  "signal_lib.companies", "signal_lib.emerging", "signal_lib.topics", "signal_lib.charts",
-                  "signal_lib", "evidence_view", "companies_view", "emerging_view"]:
+                  "signal_lib.companies", "signal_lib.emerging", "signal_lib.topics", "signal_lib.sourcing", "signal_lib.charts",
+                  "signal_lib", "evidence_view", "companies_view", "emerging_view", "sourcing_view"]:
         if _name in sys.modules:
             importlib.reload(sys.modules[_name])
         else:
@@ -21,6 +21,7 @@ if "signal_lib" in sys.modules and getattr(sys.modules["signal_lib"], "CODE_VERS
 import companies_view
 import emerging_view
 import evidence_view
+import sourcing_view
 from signal_lib import charts, data, emerging as em, evidence as ev, metrics, topics as tp
 
 st.set_page_config(
@@ -137,8 +138,9 @@ topics = tp.build(lifted, ti["corr"], ti["signals"], ti["theme_weekly"], ti["clu
                   metrics.BASELINE_THEME, definitions=ti["definitions"])
 
 ss = st.session_state
+DEFAULT_TOPIC = tp.theme_id("Voice AI")
 if ss.get("topic") not in set(topics["TOPIC_ID"]):
-    ss.topic = topics["TOPIC_ID"].iloc[0]
+    ss.topic = DEFAULT_TOPIC if DEFAULT_TOPIC in set(topics["TOPIC_ID"]) else topics["TOPIC_ID"].iloc[0]
 
 # ------------------------------------------------------------------ sidebar
 
@@ -280,9 +282,23 @@ def render_research():
 
     if tp.is_theme(topic_id):
         _research_theme(row["TOPIC"], section)
+    elif section == "Companies" and _company_mode() == SOURCE_NEW:
+        sourcing_view.render(run, cluster_id=topic_id, topic_name=row["TOPIC"])
     else:
         emerging_view.research(run, ti["signals"].set_index("CLUSTER_ID").loc[topic_id], topic_id,
                                section, on_change=clear_caches)
+
+
+SOURCE_NEW = "New companies to source"
+SOURCE_KNOWN = "Companies we talk to"
+
+
+def _company_mode():
+    return st.segmented_control(
+        "Companies", [SOURCE_NEW, SOURCE_KNOWN], default=SOURCE_NEW, required=True, key="rs_company_mode",
+        format_func=lambda m: (":material/travel_explore: " if m == SOURCE_NEW else ":material/handshake: ") + m,
+        help="New: no CRM relationship, for sourcing. Talk to: CRM accounts, whose conversations feed the "
+             "trend signals.")
 
 
 def _research_theme(theme, section):
@@ -330,7 +346,10 @@ def _research_theme(theme, section):
                 st.text(r.EXCERPT)
 
     elif section == "Companies":
-        companies_view.render(run, theme, theme_names, fixed=True)
+        if _company_mode() == SOURCE_NEW:
+            sourcing_view.render(run, theme=theme)
+        else:
+            companies_view.render(run, theme, theme_names, fixed=True)
 
     elif section == "Actions":
         accounts = metrics.filter_accounts(live["accounts"], segments, only_actionable)

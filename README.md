@@ -20,17 +20,20 @@ sql/
   11_emerging_signals.sql      # CLUSTER_MEMBERS, CLUSTER_SIGNALS (velocity, spread, status)
   12_emerging_naming_and_review.sql  # NAME_CLUSTERS(), PROMOTE_CLUSTER(), REVIEW_CLUSTER()
   13_emerging_schedule.sql     # stream + hourly task REFRESH_EMERGING (created suspended)
+  14_market_universe.sql       # 600 uncontacted companies, their signals, Cortex fit, SOURCING_TARGETS
 signal_dashboard/              # Streamlit in Snowflake app (Workspace, container runtime)
   streamlit_app.py             # UI only: two tabs, Topics (default) and Research a topic
   emerging_view.py             # discovered-topic sections (records, companies, Promote / Merge / Dismiss)
   evidence_view.py             # Evidence section for a theme (drill-down UI)
   companies_view.py            # Companies section for a theme (profile fit vs mentions)
+  sourcing_view.py             # Companies section: new companies to source + company card
   signal_lib/                  # reusable library, no Streamlit dependency
     data.py                    # parameterised queries; take run(sql, params) -> DataFrame
     evidence.py                # evidence/attribution queries + pure helpers
     companies.py               # company profile / theme relevance queries + helpers
     emerging.py                # emerging-topic queries, promote/review actions, helpers
     topics.py                  # one topic list: tracked themes + discovered clusters
+    sourcing.py                # uncontacted companies ranked per theme / topic
     metrics.py                 # lift vs baseline, quarterly share, momentum, KPIs, filters
     charts.py                  # Altair chart builders
     theme.py                   # palette and chart styling
@@ -40,7 +43,7 @@ tests/                         # pure-pandas tests for metrics, evidence, compan
 
 ## Setup
 
-1. Run the `sql/` scripts in order (01 → 13) with a role that can create a database.
+1. Run the `sql/` scripts in order (01 → 14) with a role that can create a database.
    07 calls Cortex `AI_EMBED` once (~130k input tokens). 05 keeps the original CRM
    table as `ANALYTICS.FACT_CRM_EVENTS_V1`; it rebuilds CRM from that backup, so re-run
    08 after 05. 08 calls `AI_COMPLETE` once (~74k input tokens + output) and stores the text.
@@ -57,14 +60,14 @@ sources, confidence, parent theme), a momentum-vs-reach topic map (● theme, �
 *What's new* strip and an *All themes over time* panel. Noise and reviewed clusters are behind a toggle.
 Selecting a row, a map point or *Research →* opens the topic in the second tab.
 
-**Research a topic** has a picker over every topic, a header card and five sections (only the open
+**Research a topic** opens on Voice AI and has a picker over every topic, a header card and five sections (only the open
 one loads data):
 
 | Section | Tracked theme | Discovered topic |
 |---|---|---|
 | Overview | Lift, mentions, enterprises, portco-intro share, confidence; monthly and quarterly share (FDE panel for FDE) | Records, velocity, companies, sources, top-company share; weekly additions by source |
 | Evidence | Theme › Source › Company › evidence drill-down, recent CRM notes | Records closest to the topic centre, search, CSV |
-| Companies | Cortex profile fit vs mentions, company card, latent-fit outreach CSV | Companies in the cluster with owner |
+| Companies | **New companies to source** (default): uncontacted companies ranked by score, company card with signals. **Companies we talk to**: Cortex profile fit vs mentions, latent-fit outreach | **New companies to source**: uncontacted companies closest to the topic centre. **Companies we talk to**: companies in the cluster |
 | Actions | Unowned / 90+ day accounts (sidebar filters), CSV | Unowned companies; Promote / Merge / Dismiss / Reopen |
 | Context | Portcos, expert calls, external scan companies | Nearest or parent theme, Cortex reason, records by source |
 
@@ -168,3 +171,16 @@ for example `st.connection("snowflake").query` or a `snowflake.connector` cursor
 pip install pandas altair pytest
 python -m pytest tests
 ```
+
+## Sourcing new companies
+
+CRM accounts are companies we already talk to; their conversations drive the trend signals.
+Sourcing works on a separate universe of companies with **no CRM relationship**
+(`ANALYTICS.DIM_MARKET_COMPANIES`, 600 synthetic companies built by `14_market_universe.sql`).
+Each has a description (same sector and priority templates as CRM profiles), and about two thirds
+surface in other sources: expert calls, portfolio-company notes and the external scan
+(`ANALYTICS.MARKET_SIGNALS`). `EVIDENCE.SOURCING_TARGETS` lists, per theme, companies whose
+Cortex profile fit ranks the theme in their top 4 or that were seen on it, scored
+0.5 fit + 0.3 signals (up to 3) + 0.2 recency, and labelled Fit + signal, Signal only or Fit only.
+For discovered topics the app ranks the same companies by similarity to the cluster centre.
+Market signals are not counted in the theme trend numbers.

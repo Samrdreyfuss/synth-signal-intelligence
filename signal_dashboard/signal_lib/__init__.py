@@ -6,8 +6,8 @@ from Streamlit (``st.connection(...).query``), a notebook, or tests.
 """
 
 # The app reloads these modules when this differs from its CODE_VERSION (see streamlit_app.py).
-CODE_VERSION = 6
+CODE_VERSION = 7
 
-from . import charts, companies, data, emerging, evidence, metrics, theme, topics
+from . import charts, companies, data, emerging, evidence, metrics, sourcing, theme, topics
 
-__all__ = ["charts", "companies", "data", "emerging", "evidence", "metrics", "theme", "topics"]
+__all__ = ["charts", "companies", "data", "emerging", "evidence", "metrics", "sourcing", "theme", "topics"]
