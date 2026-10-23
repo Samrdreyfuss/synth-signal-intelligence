@@ -18,7 +18,8 @@ def _clear_company():
     st.session_state.cf_company = None
 
 
-def render(run, focus_theme, theme_names):
+def render(run, focus_theme, theme_names, fixed=False):
+    """fixed=True renders for focus_theme without the tab's own theme picker."""
     @st.cache_data(ttl=CACHE_TTL, max_entries=64)
     def load_theme(theme):
         return co.theme_companies(run, theme)
@@ -43,9 +44,9 @@ def render(run, focus_theme, theme_names):
         + " · ".join(f"**{k}**: {v}" for k, v in co.RELATIONSHIP_HELP.items())
     )
 
-    theme = st.selectbox("Theme", theme_names,
-                         index=theme_names.index(focus_theme) if focus_theme in theme_names else 0,
-                         key="cf_theme")
+    theme = focus_theme if fixed else st.selectbox(
+        "Theme", theme_names, index=theme_names.index(focus_theme) if focus_theme in theme_names else 0,
+        key="cf_theme")
     if ss.cf_theme_seen != theme:
         ss.cf_theme_seen = theme
         ss.cf_company = None

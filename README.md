@@ -21,15 +21,16 @@ sql/
   12_emerging_naming_and_review.sql  # NAME_CLUSTERS(), PROMOTE_CLUSTER(), REVIEW_CLUSTER()
   13_emerging_schedule.sql     # stream + hourly task REFRESH_EMERGING (created suspended)
 signal_dashboard/              # Streamlit in Snowflake app (Workspace, container runtime)
-  streamlit_app.py             # UI only: header, KPIs, eight tabs
-  emerging_view.py             # Emerging topics tab (map, ranked list, topic card, review)
-  evidence_view.py             # Evidence explorer tab (drill-down UI)
-  companies_view.py            # Company fit tab (profile fit vs mentions drill-down)
+  streamlit_app.py             # UI only: two tabs, Topics (default) and Research a topic
+  emerging_view.py             # discovered-topic sections (records, companies, Promote / Merge / Dismiss)
+  evidence_view.py             # Evidence section for a theme (drill-down UI)
+  companies_view.py            # Companies section for a theme (profile fit vs mentions)
   signal_lib/                  # reusable library, no Streamlit dependency
     data.py                    # parameterised queries; take run(sql, params) -> DataFrame
     evidence.py                # evidence/attribution queries + pure helpers
     companies.py               # company profile / theme relevance queries + helpers
     emerging.py                # emerging-topic queries, promote/review actions, helpers
+    topics.py                  # one topic list: tracked themes + discovered clusters
     metrics.py                 # lift vs baseline, quarterly share, momentum, KPIs, filters
     charts.py                  # Altair chart builders
     theme.py                   # palette and chart styling
@@ -48,17 +49,26 @@ tests/                         # pure-pandas tests for metrics, evidence, compan
 
 ## Dashboard
 
-| Tab | Shows |
-|---|---|
-| Theme radar | Lift vs the AI-agents baseline against enterprise reach; ranked lift bars; full theme table |
-| Emerging topics | Clusters discovered from embeddings: uniqueness vs velocity map, ranked list with weekly trend, topic card (definition, weekly additions by source, companies, closest records), Promote / Merge / Dismiss |
-| Evidence explorer | Attribution by source per theme, corroboration, and drill-down Theme › Source › Company › evidence |
-| Company fit | Cortex profile fit vs CRM mentions per company; Confirmed / Latent fit / Off-profile; company card with evidence; latent-fit outreach CSV |
-| Trends | Quarterly share of enterprise activity (quarters under 200 activities dropped), YoY momentum, live monthly share, FDE panel |
-| Network | Portco x theme heatmap, expert call coverage and examples |
-| Action list | CRM accounts mentioning the focus theme that are unowned or untouched 90+ days (CSV export); external scan by Salesforce status |
-| Live excerpts | Most recent CRM notes for the focus theme |
+Two tabs.
 
+**Topics** (opens first) lists everything the platform has picked up: the 20 tracked themes and the
+topics discovered from embeddings, in one table (type, status, 16-week trend, momentum, companies,
+sources, confidence, parent theme), a momentum-vs-reach topic map (● theme, ◆ discovered), a
+*What's new* strip and an *All themes over time* panel. Noise and reviewed clusters are behind a toggle.
+Selecting a row, a map point or *Research →* opens the topic in the second tab.
+
+**Research a topic** has a picker over every topic, a header card and five sections (only the open
+one loads data):
+
+| Section | Tracked theme | Discovered topic |
+|---|---|---|
+| Overview | Lift, mentions, enterprises, portco-intro share, confidence; monthly and quarterly share (FDE panel for FDE) | Records, velocity, companies, sources, top-company share; weekly additions by source |
+| Evidence | Theme › Source › Company › evidence drill-down, recent CRM notes | Records closest to the topic centre, search, CSV |
+| Companies | Cortex profile fit vs mentions, company card, latent-fit outreach CSV | Companies in the cluster with owner |
+| Actions | Unowned / 90+ day accounts (sidebar filters), CSV | Unowned companies; Promote / Merge / Dismiss / Reopen |
+| Context | Portcos, expert calls, external scan companies | Nearest or parent theme, Cortex reason, records by source |
+
+Momentum is lift vs baseline for themes and velocity (last 8 weeks ÷ prior 8) for discovered topics.
 Lift = a theme's monthly rate ratio divided by the baseline ratio from the same scan.
 
 ## Emerging topics

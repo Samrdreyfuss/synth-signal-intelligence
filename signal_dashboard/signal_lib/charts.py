@@ -309,3 +309,44 @@ def cluster_timeline(weekly: pd.DataFrame) -> alt.Chart:
         tooltip=[alt.Tooltip("WEEK:T", format="%b %d, %Y"), "SOURCE:N", "RECORDS:Q"],
     )
     return t.style(chart.properties(height=220))
+
+
+TOPIC_PICK = "topic_pick"
+
+
+def topic_map(topics: pd.DataFrame, selected: Optional[str] = None) -> alt.Chart:
+    """Every topic on momentum vs reach. Shape = tracked theme or discovered; click to pick."""
+    colors = {**t.SIGNAL_COLORS, **t.EMERGING_COLORS}
+    df = topics.drop(columns=["TREND", "FIRST_SEEN", "DEFINITION"], errors="ignore").assign(
+        SELECTED=topics["TOPIC_ID"] == selected,
+        M=topics["MOMENTUM"].clip(lower=0.05))
+    pick = alt.selection_point(name=TOPIC_PICK, fields=["TOPIC_ID"], on="click")
+    base = alt.Chart(df)
+    enc = dict(
+        x=alt.X("COMPANIES:Q", title="Reach (companies)", scale=alt.Scale(type="symlog")),
+        y=alt.Y("M:Q", title="Momentum (theme lift · topic velocity)", scale=alt.Scale(type="log")),
+    )
+    dots = base.mark_point(filled=True, opacity=0.9, size=260, stroke=t.BACKGROUND, strokeWidth=1).encode(
+        **enc,
+        shape=alt.Shape("KIND:N", title=None,
+                        scale=alt.Scale(domain=["Tracked theme", "Discovered"], range=["circle", "diamond"])),
+        color=alt.Color("STATUS:N", title=None,
+                        scale=alt.Scale(domain=list(colors), range=list(colors.values()))),
+        tooltip=[alt.Tooltip("TOPIC:N", title="Topic"), "KIND:N", "STATUS:N",
+                 alt.Tooltip("MOMENTUM:Q", format=".2f", title="Momentum"),
+                 alt.Tooltip("COMPANIES:Q", title="Companies"), alt.Tooltip("MENTIONS:Q", title="Mentions")],
+    ).add_params(pick)
+    rule = alt.Chart(pd.DataFrame({"Y": [1.0]})).mark_rule(color=t.MUTED, strokeDash=[4, 4]).encode(y="Y:Q")
+    labels = base.mark_text(align="left", dx=10, dy=-6, fontSize=10, color=t.TEXT).encode(
+        **enc, text="TOPIC:N")
+    halo = base.transform_filter("datum.SELECTED").mark_circle(
+        fill=None, stroke=t.TEXT, strokeWidth=2, size=900).encode(**enc)
+    return t.style((rule + dots + halo + labels).properties(height=420))
+
+
+def topic_weekly(weekly: pd.DataFrame) -> alt.Chart:
+    """Weekly CRM mentions for one tracked theme."""
+    chart = alt.Chart(weekly).mark_area(color=t.PRIMARY, opacity=0.35, line={"color": t.PRIMARY}).encode(
+        x=alt.X("WEEK:T", title=None), y=alt.Y("RECORDS:Q", title="Mentions per week"),
+        tooltip=[alt.Tooltip("WEEK:T", format="%b %d, %Y"), "RECORDS:Q"])
+    return t.style(chart.properties(height=220))

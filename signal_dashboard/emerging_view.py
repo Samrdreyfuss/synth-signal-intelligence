@@ -149,6 +149,76 @@ def _topic_card(run, s, cluster_id, weekly, comps, mem, on_change):
             _review(run, s, cluster_id, name, on_change)
 
 
+@st.cache_data(ttl=CACHE_TTL, max_entries=64)
+def _detail(_run, cluster_id, version=1):
+    return em.weekly(_run, cluster_id), em.companies(_run, cluster_id), em.members(_run, cluster_id, 60)
+
+
+def research(run, s, cluster_id, section, on_change):
+    """One section of a discovered topic for the Research tab (s = its CLUSTER_SIGNALS row)."""
+    weekly, comps, mem = _detail(run, cluster_id)
+    name = s["TOPIC_NAME"] if pd.notna(s["TOPIC_NAME"]) else cluster_id
+    if section == "Overview":
+        with st.container(horizontal=True):
+            st.metric("Records", int(s["RECORDS"]), f"{int(s['RECENT_RECORDS'])} in last 8 weeks",
+                      delta_color="off", border=True)
+            st.metric("Velocity", f"{s['VELOCITY']:.2f}×", "recent vs prior 8 weeks", delta_color="off",
+                      border=True)
+            st.metric("Companies", int(s["ACCOUNTS"]), f"{int(s['REPS'])} reps · {int(s['INDUSTRIES'])} industries",
+                      delta_color="off", border=True)
+            st.metric("Sources", int(s["SOURCES"]), s["SOURCE_LIST"], delta_color="off", border=True)
+            st.metric("Top company share", f"{s['TOP_ACCOUNT_SHARE']:.0%}", "noise if above 50%",
+                      delta_color="off", border=True)
+        with st.container(border=True):
+            st.markdown("**Weekly additions by source**")
+            st.altair_chart(charts.cluster_timeline(weekly), width="stretch")
+        if pd.notna(s["KEY_TERMS"]):
+            st.caption(f"Key terms: {s['KEY_TERMS']}")
+    elif section == "Evidence":
+        with st.container(horizontal=True, vertical_alignment="center"):
+            st.markdown(f"**{len(mem)} records closest to the topic centre**")
+            st.download_button(":material/download: CSV", mem.to_csv(index=False).encode(),
+                               file_name=f"emerging_{cluster_id}.csv", mime="text/csv",
+                               key=f"rs_csv_{cluster_id}", type="tertiary")
+        q = st.text_input("Search records", key=f"rs_q_{cluster_id}", placeholder="e.g. pilot, budget")
+        shown = mem[mem["TEXT"].str.contains(q, case=False, regex=False)] if q else mem
+        for row in shown.itertuples(index=False):
+            with st.container(border=True):
+                st.markdown(f":blue-badge[{row.SOURCE}] **{row.ENTITY_NAME}** · "
+                            f"{pd.to_datetime(row.RECORD_DATE):%b %d, %Y} · similarity {row.SIMILARITY:.2f}")
+                st.text(row.TEXT)
+                st.caption(f"record {row.RECORD_ID}")
+    elif section == "Companies":
+        with st.container(border=True):
+            st.markdown(f"**{len(comps)} companies in this topic**")
+            st.dataframe(
+                comps, hide_index=True, width="stretch",
+                column_config={"ENTITY_NAME": "Company", "INDUSTRY": "Industry", "RECORDS": "Records",
+                               "LAST_SEEN": st.column_config.DateColumn("Last seen"),
+                               "SOURCES": "Sources", "OWNER_NAME": "Owner"},
+            )
+    elif section == "Actions":
+        unowned = comps[comps["OWNER_NAME"].isna()]
+        with st.container(border=True):
+            st.markdown(f"**Unowned companies discussing this topic** · {len(unowned)}")
+            st.dataframe(unowned, hide_index=True, width="stretch",
+                         column_config={"ENTITY_NAME": "Company", "INDUSTRY": "Industry",
+                                        "RECORDS": "Records", "OWNER_NAME": None,
+                                        "LAST_SEEN": st.column_config.DateColumn("Last seen")})
+        _review(run, s, cluster_id, name, on_change)
+    elif section == "Context":
+        with st.container(border=True):
+            related = s["RELATED_THEME"] if pd.notna(s["RELATED_THEME"]) else None
+            st.markdown(f"**Relation to tracked themes**")
+            st.write(f"Sub-topic of **{related}**." if related else
+                     f"Nearest tracked theme **{s['NEAREST_THEME']}** (similarity "
+                     f"{s['THEME_SIMILARITY']:.2f}, uniqueness {s['UNIQUENESS']:.2f}).")
+            if pd.notna(s["REASON"]):
+                st.caption(f"Cortex: {s['REASON']}")
+            by_src = weekly.groupby("SOURCE")["RECORDS"].sum().reset_index()
+            st.dataframe(by_src, hide_index=True, column_config={"SOURCE": "Source", "RECORDS": "Records"})
+
+
 def _review(run, s, cluster_id, name, on_change):
     st.markdown("**Review**")
     with st.form(f"em_promote_{cluster_id}", border=True):

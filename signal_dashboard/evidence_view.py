@@ -40,7 +40,8 @@ def _clear_all():
     ss.ev_search = ""
 
 
-def render(run, focus_theme, lifted, saved):
+def render(run, focus_theme, lifted, saved, show_overview=True):
+    """show_overview=False hides the all-theme attribution chart and pins the explorer to focus_theme."""
     @st.cache_data(ttl=CACHE_TTL)
     def load_overview(version=2):  # bump to drop results cached by older code
         return ev.attribution_shares(ev.attribution(run)), ev.corroboration(run)
@@ -69,23 +70,24 @@ def render(run, focus_theme, lifted, saved):
         attr, corr = load_overview()
 
     # ---------------------------------------------------------- 1. attribution overview
-    with st.container(border=True):
-        st.markdown("**Where each theme's evidence comes from** · click a bar to drill into a theme")
-        event = st.altair_chart(
-            charts.attribution_bars(attr, corr, ss.ev_theme),
-            on_select="rerun", key="ev_attr_chart", width="stretch",
-        )
-        picks = (event.selection or {}).get(charts.THEME_PICK) or [] if event else []
-        pick = picks[0].get("THEME") if picks else None
-        if pick and pick != ss.ev_last_pick:
-            ss.ev_last_pick = pick
-            if pick != ss.ev_theme:
-                ss.ev_theme = pick
-                ss.ev_entity = None
-                st.rerun()
-        st.caption(" · ".join(f"**{k}**: {v}" for k, v in EXPLAIN.items()))
+    if show_overview:
+        with st.container(border=True):
+            st.markdown("**Where each theme's evidence comes from** · click a bar to drill into a theme")
+            event = st.altair_chart(
+                charts.attribution_bars(attr, corr, ss.ev_theme),
+                on_select="rerun", key="ev_attr_chart", width="stretch",
+            )
+            picks = (event.selection or {}).get(charts.THEME_PICK) or [] if event else []
+            pick = picks[0].get("THEME") if picks else None
+            if pick and pick != ss.ev_last_pick:
+                ss.ev_last_pick = pick
+                if pick != ss.ev_theme:
+                    ss.ev_theme = pick
+                    ss.ev_entity = None
+                    st.rerun()
+            st.caption(" · ".join(f"**{k}**: {v}" for k, v in EXPLAIN.items()))
 
-    theme = ss.ev_theme
+    theme = ss.ev_theme if show_overview else focus_theme
     if not theme:
         st.info("Pick a theme above to see its evidence.")
         return

@@ -18,6 +18,7 @@ entities:
       - signal_lib/evidence.py
       - signal_lib/companies.py
       - signal_lib/emerging.py
+      - signal_lib/topics.py
       - signal_lib/metrics.py
       - signal_lib/charts.py
       - signal_lib/theme.py
